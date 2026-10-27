@@ -14,3 +14,4 @@ export function waLink(s:Settings|null,v?:Vehicle){
 export async function loadAll(){
  const [v,s]=await Promise.all([sb.from('vehicles').select('*,vehicle_photos(url,position)').eq('is_published',true).order('published_at',{ascending:false}),sb.from('settings').select('*').eq('id',1).maybeSingle()]);
  return {vehicles:(v.data||[]) as Vehicle[],settings:(s.data||null) as Settings|null,error:v.error?.message};}
+export const slugify=(s:string)=>s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');

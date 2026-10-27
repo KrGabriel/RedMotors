@@ -1,6 +1,7 @@
 import {useCallback,useEffect,useState} from 'react';
 import {Link} from 'react-router-dom';
 import {configured,sb} from './lib';
+import InstagramAdmin from './InstagramAdmin';
 
 type P={id:string;url:string;position:number};
 type V={id:string;slug:string;brand:string;model:string;version:string|null;year:number;price:number|null;currency:string;mileage:number|null;fuel:string|null;transmission:string|null;color:string|null;body_type:string|null;description:string|null;features:string[];sale_status:string;is_published:boolean;featured:boolean;instagram_url:string|null;updated_at:string;vehicle_photos:P[]};
@@ -71,7 +72,7 @@ function Editor({v,onClose}:{v:V|null;onClose:()=>void}){
   <div className="pgrid">{sorted(cur).map((p,i)=><div key={p.id} className="pitem"><img src={p.url} alt=""/>{i===0&&<b className="tag">Principal</b>}<div className="row"><button onClick={()=>move(i,-1)}>←</button><button onClick={()=>move(i,1)}>→</button>{i>0&&<button onClick={()=>main(i)}>★</button>}<button onClick={()=>del(i)}>🗑</button></div></div>)}</div></>}</div>;}
 
 export default function Admin(){
- const [st,setSt]=useState<'load'|'login'|'denied'|'ok'>('load');const [list,setList]=useState<V[]>([]);const [ed,setEd]=useState<V|null|undefined>(undefined);const [q,setQ]=useState('');const [err,setErr]=useState('');
+ const [st,setSt]=useState<'load'|'login'|'denied'|'ok'>('load');const [list,setList]=useState<V[]>([]);const [ed,setEd]=useState<V|null|undefined>(undefined);const [q,setQ]=useState('');const [err,setErr]=useState('');const [ig,setIg]=useState(new URLSearchParams(location.search).has('instagram'));
  const check=useCallback(async()=>{const {data:{session}}=await sb.auth.getSession();if(!session)return setSt('login');
   const {data}=await sb.from('admin_users').select('user_id').eq('user_id',session.user.id).maybeSingle();setSt(data?'ok':'denied');},[]);
  const load=useCallback(async()=>{const {data,error}=await sb.from('vehicles').select('*,vehicle_photos(id,url,position)').order('updated_at',{ascending:false});if(error)setErr(error.message);else setList(data as V[]);},[]);
@@ -80,13 +81,14 @@ export default function Admin(){
  if(st==='load')return <main><p>Cargando…</p></main>;
  if(st==='login')return <Login onDone={check}/>;
  if(st==='denied')return <main><p className="err">Tu usuario no tiene permisos de administrador. Agregalo a la tabla admin_users.</p><button className="btn" onClick={async()=>{await sb.auth.signOut();setSt('login');}}>Salir</button></main>;
+ if(ig)return <main><InstagramAdmin onClose={()=>setIg(false)}/></main>;
  if(ed!==undefined)return <main><Editor v={ed} onClose={()=>setEd(undefined)}/></main>;
  const patch=async(v:V,c:Partial<V>)=>{const {error}=await sb.from('vehicles').update(c).eq('id',v.id);if(error)setErr(error.message);load();};
  const remove=async(v:V)=>{if(!confirm(`¿Eliminar ${v.brand} ${v.model} ${v.year}? Se borran también sus fotos.`))return;
   const paths=v.vehicle_photos.map(p=>pathOf(p.url)).filter(Boolean);if(paths.length){const r=await sb.storage.from(BUCKET).remove(paths);if(r.error)return setErr(`No se pudieron borrar las fotos: ${r.error.message}`);}
   const {error}=await sb.from('vehicles').delete().eq('id',v.id);if(error)setErr(error.message);load();};
  const shown=list.filter(v=>`${v.brand} ${v.model} ${v.version||''}`.toLowerCase().includes(q.toLowerCase()));
- return <main><div className="row" style={{justifyContent:'space-between'}}><h2>Inventario</h2><div className="row"><Link className="btn" to="/">Ver web</Link><button className="btn" onClick={()=>setEd(null)}>+ Nuevo vehículo</button><button className="btn" onClick={async()=>{await sb.auth.signOut();setSt('login');}}>Salir</button></div></div>
+ return <main><div className="row" style={{justifyContent:'space-between'}}><h2>Inventario</h2><div className="row"><Link className="btn" to="/">Ver web</Link><button className="btn" onClick={()=>setIg(true)}>Instagram</button><button className="btn" onClick={()=>setEd(null)}>+ Nuevo vehículo</button><button className="btn" onClick={async()=>{await sb.auth.signOut();setSt('login');}}>Salir</button></div></div>
   {err&&<p className="err">{err}</p>}<input placeholder="Buscar…" value={q} onChange={e=>setQ(e.target.value)}/>
   {!shown.length&&<div className="empty"><p>No hay vehículos cargados.</p></div>}
   <div className="tbl">{shown.map(v=><div className="trow" key={v.id}><img src={sorted(v)[0]?.url} alt=""/><div className="grow"><b>{v.brand} {v.model} {v.version||''} · {v.year}</b><div className="meta">{v.price!=null?`${v.currency} ${v.price.toLocaleString('es-AR')}`:'Sin precio'} · {new Date(v.updated_at).toLocaleString('es-AR')}</div></div>
