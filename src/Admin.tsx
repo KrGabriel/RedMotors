@@ -1,8 +1,10 @@
 import {useCallback,useEffect,useState} from 'react';
 import {Link} from 'react-router-dom';
 import {configured,sb} from './lib';
+import {Icon} from './icons';
 import InstagramAdmin from './InstagramAdmin';
 
+const Bar=()=><div className="admbar"><img src="/logo.png" alt="" width="36" height="36"/><b>Panel de administración</b></div>;
 type P={id:string;url:string;position:number};
 type V={id:string;slug:string;brand:string;model:string;version:string|null;year:number;price:number|null;currency:string;mileage:number|null;fuel:string|null;transmission:string|null;color:string|null;body_type:string|null;description:string|null;features:string[];sale_status:string;is_published:boolean;featured:boolean;instagram_url:string|null;updated_at:string;vehicle_photos:P[]};
 const BUCKET='vehicle-photos',MAX=5*1024*1024,TYPES=['image/jpeg','image/png','image/webp'];
@@ -13,7 +15,7 @@ const empty={brand:'',model:'',version:'',year:'',price:'',currency:'ARS',mileag
 
 function Login({onDone}:{onDone:()=>void}){const [e,setE]=useState('');const [p,setP]=useState('');const [err,setErr]=useState('');
  const go=async()=>{setErr('');const {error}=await sb.auth.signInWithPassword({email:e,password:p});if(error)setErr('Email o contraseña incorrectos.');else onDone();};
- return <main className="login"><h2>Panel de administración</h2><input placeholder="Email" type="email" value={e} onChange={x=>setE(x.target.value)}/><input placeholder="Contraseña" type="password" value={p} onChange={x=>setP(x.target.value)} onKeyDown={x=>x.key==='Enter'&&go()}/>{err&&<p className="err">{err}</p>}<button className="btn" onClick={go}>Ingresar</button></main>;}
+ return <main className="login"><img className="loginlogo" src="/logo.png" alt="RedMotors" width="96" height="96"/><h2>Panel de administración</h2><input placeholder="Email" type="email" value={e} onChange={x=>setE(x.target.value)}/><input placeholder="Contraseña" type="password" value={p} onChange={x=>setP(x.target.value)} onKeyDown={x=>x.key==='Enter'&&go()}/>{err&&<p className="err">{err}</p>}<button className="btn" onClick={go}>Ingresar</button></main>;}
 
 function Editor({v,onClose}:{v:V|null;onClose:()=>void}){
  const [cur,setCur]=useState<V|null>(v);
@@ -69,7 +71,7 @@ function Editor({v,onClose}:{v:V|null;onClose:()=>void}){
   <label>Equipamiento (uno por línea)<textarea rows={4} value={f.features} onChange={set('features')}/></label>
   <button className="btn" disabled={!!busy} onClick={save}>{cur?'Guardar cambios':'Crear vehículo'}</button>
   {cur&&<><h3>Fotografías</h3><p className="meta">La primera es la principal. JPG, PNG o WebP, hasta 5 MB.</p><input type="file" multiple accept="image/jpeg,image/png,image/webp" disabled={!!busy} onChange={e=>{upload(e.target.files);e.target.value='';}}/>
-  <div className="pgrid">{sorted(cur).map((p,i)=><div key={p.id} className="pitem"><img src={p.url} alt=""/>{i===0&&<b className="tag">Principal</b>}<div className="row"><button onClick={()=>move(i,-1)}>←</button><button onClick={()=>move(i,1)}>→</button>{i>0&&<button onClick={()=>main(i)}>★</button>}<button onClick={()=>del(i)}>🗑</button></div></div>)}</div></>}</div>;}
+  <div className="pgrid">{sorted(cur).map((p,i)=><div key={p.id} className="pitem"><img src={p.url} alt=""/>{i===0&&<b className="tag">Principal</b>}<div className="row"><button aria-label="Mover a la izquierda" onClick={()=>move(i,-1)}><Icon n="left" size={16}/></button><button aria-label="Mover a la derecha" onClick={()=>move(i,1)}><Icon n="right" size={16}/></button>{i>0&&<button aria-label="Usar como principal" onClick={()=>main(i)}><Icon n="star" size={16}/></button>}<button aria-label="Eliminar foto" onClick={()=>del(i)}><Icon n="trash" size={16}/></button></div></div>)}</div></>}</div>;}
 
 export default function Admin(){
  const [st,setSt]=useState<'load'|'login'|'denied'|'ok'>('load');const [list,setList]=useState<V[]>([]);const [ed,setEd]=useState<V|null|undefined>(undefined);const [q,setQ]=useState('');const [err,setErr]=useState('');const [ig,setIg]=useState(new URLSearchParams(location.search).has('instagram'));
@@ -81,14 +83,14 @@ export default function Admin(){
  if(st==='load')return <main><p>Cargando…</p></main>;
  if(st==='login')return <Login onDone={check}/>;
  if(st==='denied')return <main><p className="err">Tu usuario no tiene permisos de administrador. Agregalo a la tabla admin_users.</p><button className="btn" onClick={async()=>{await sb.auth.signOut();setSt('login');}}>Salir</button></main>;
- if(ig)return <main><InstagramAdmin onClose={()=>setIg(false)}/></main>;
- if(ed!==undefined)return <main><Editor v={ed} onClose={()=>setEd(undefined)}/></main>;
+ if(ig)return <main><Bar/><InstagramAdmin onClose={()=>setIg(false)}/></main>;
+ if(ed!==undefined)return <main><Bar/><Editor v={ed} onClose={()=>setEd(undefined)}/></main>;
  const patch=async(v:V,c:Partial<V>)=>{const {error}=await sb.from('vehicles').update(c).eq('id',v.id);if(error)setErr(error.message);load();};
  const remove=async(v:V)=>{if(!confirm(`¿Eliminar ${v.brand} ${v.model} ${v.year}? Se borran también sus fotos.`))return;
   const paths=v.vehicle_photos.map(p=>pathOf(p.url)).filter(Boolean);if(paths.length){const r=await sb.storage.from(BUCKET).remove(paths);if(r.error)return setErr(`No se pudieron borrar las fotos: ${r.error.message}`);}
   const {error}=await sb.from('vehicles').delete().eq('id',v.id);if(error)setErr(error.message);load();};
  const shown=list.filter(v=>`${v.brand} ${v.model} ${v.version||''}`.toLowerCase().includes(q.toLowerCase()));
- return <main><div className="row" style={{justifyContent:'space-between'}}><h2>Inventario</h2><div className="row"><Link className="btn" to="/">Ver web</Link><button className="btn" onClick={()=>setIg(true)}>Instagram</button><button className="btn" onClick={()=>setEd(null)}>+ Nuevo vehículo</button><button className="btn" onClick={async()=>{await sb.auth.signOut();setSt('login');}}>Salir</button></div></div>
+ return <main><Bar/><div className="row" style={{justifyContent:'space-between'}}><h2>Inventario</h2><div className="row"><Link className="btn" to="/">Ver web</Link><button className="btn" onClick={()=>setIg(true)}>Instagram</button><button className="btn" onClick={()=>setEd(null)}>+ Nuevo vehículo</button><button className="btn" onClick={async()=>{await sb.auth.signOut();setSt('login');}}>Salir</button></div></div>
   {err&&<p className="err">{err}</p>}<input placeholder="Buscar…" value={q} onChange={e=>setQ(e.target.value)}/>
   {!shown.length&&<div className="empty"><p>No hay vehículos cargados.</p></div>}
   <div className="tbl">{shown.map(v=><div className="trow" key={v.id}><img src={sorted(v)[0]?.url} alt=""/><div className="grow"><b>{v.brand} {v.model} {v.version||''} · {v.year}</b><div className="meta">{v.price!=null?`${v.currency} ${v.price.toLocaleString('es-AR')}`:'Sin precio'} · {new Date(v.updated_at).toLocaleString('es-AR')}</div></div>
