@@ -34,3 +34,19 @@ export async function ensureThumbs(vehicleId:string){
    const u=await sb.from('vehicle_photos').update({thumb_url:turl}).eq('id',p.id);if(u.error)throw new Error(u.error.message);ok++;}
   catch(e){errs.push(`${p.id.slice(0,8)}: ${(e as Error).message}`);}}
  return {ok,errs};}
+export type Obj={path:string;size:number;created:string};
+/** Lista todos los archivos del bucket (carpetas por vehículo). */
+export async function listBucket():Promise<Obj[]>{
+ const st=sb.storage.from(BUCKET),out:Obj[]=[];
+ const root=await st.list('',{limit:1000});if(root.error)throw new Error(root.error.message);
+ for(const f of root.data){
+  if(f.id){out.push({path:f.name,size:f.metadata?.size??0,created:f.created_at??''});continue;}
+  const sub=await st.list(f.name,{limit:1000});if(sub.error)throw new Error(sub.error.message);
+  for(const o of sub.data)if(o.id)out.push({path:`${f.name}/${o.name}`,size:o.metadata?.size??0,created:o.created_at??''});}
+ return out;}
+const dec=(s:string)=>{try{return decodeURIComponent(s);}catch{return s;}};
+/** Archivos que ninguna foto usa. Ignora los recientes (pueden estar subiéndose) y no decide nada si no hay fotos registradas. */
+export function findOrphans(objs:Obj[],rows:{url:string;thumb_url:string|null}[],now=Date.now(),minAgeMs=600000):Obj[]|null{
+ if(!rows.length)return null;
+ const ref=new Set<string>();for(const r of rows){ref.add(dec(pathOf(r.url)));if(r.thumb_url)ref.add(dec(pathOf(r.thumb_url)));}
+ return objs.filter(o=>!ref.has(o.path)&&now-new Date(o.created).getTime()>minAgeMs);}

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-const {plan,thumbPath}=await import(process.argv[2]);
+const {plan,thumbPath,findOrphans}=await import(process.argv[2]);
 const mk=(size,w,h)=>{const b=new Blob([new Uint8Array(size)]);b.dims={w,h};return b;};
 URL.createObjectURL=b=>'fake:'+JSON.stringify(b.dims);URL.revokeObjectURL=()=>{};
 globalThis.Image=class{set src(v){this._s=v;}async decode(){const d=JSON.parse(this._s.slice(5));this.naturalWidth=d.w;this.naturalHeight=d.h;}};
@@ -18,3 +18,11 @@ webp=false;r=await plan(mk(3e6,4000,3000),true);assert.equal(r.full.ext,'jpg');a
 // foto vertical
 r=await plan(mk(2e6,3000,4000),true);assert.equal(r.full.h,1600);assert.equal(r.full.w,1200);console.log('ok vertical');
 assert.equal(thumbPath('veh/uuid.jpeg','webp'),'veh/t-uuid.webp');assert.equal(thumbPath('veh/ig-123.jpg','webp'),'veh/t-ig-123.webp');console.log('ok rutas de miniatura');
+
+const U='https://s/storage/v1/object/public/vehicle-photos/';
+const rows=[{url:U+'v1/o-a.webp',thumb_url:U+'v1/t-a.webp'},{url:U+'v2/b.jpg',thumb_url:null}];
+const old='2020-01-01T00:00:00Z',now=Date.parse('2026-10-29T12:00:00Z');
+const objs=[{path:'v1/o-a.webp',size:1,created:old},{path:'v1/t-a.webp',size:1,created:old},{path:'v2/b.jpg',size:1,created:old},{path:'v1/a.jpg',size:5,created:old},{path:'v3/nuevo.jpg',size:5,created:'2026-10-29T11:55:00Z'}];
+assert.deepEqual(findOrphans(objs,rows,now).map(o=>o.path),['v1/a.jpg']);
+assert.equal(findOrphans(objs,[],now),null);
+console.log('ok huerfanos: solo el original reemplazado; ignora recientes y usadas; sin fotos registradas no decide');
