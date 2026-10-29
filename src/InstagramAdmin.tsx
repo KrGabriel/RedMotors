@@ -1,5 +1,6 @@
 import {useCallback,useEffect,useState} from 'react';
 import {sb,slugify} from './lib';
+import {ensureThumbs} from './photoTools';
 type Media={id:string;media_type:string;media_url?:string;thumbnail_url?:string};
 type Post={id:string;ig_media_id:string;caption:string|null;media_type:string;permalink:string;posted_at:string;thumbnail_url:string|null;media:Media[];status:string;vehicle_id:string|null;unavailable:boolean;caption_changed:boolean;last_error:string|null};
 type Conn={connected:boolean;username?:string;expires_at?:string;last_sync_at?:string;last_error?:string;logs:{started_at:string;trigger:string;ok:boolean|null;fetched:number;new_posts:number;message:string|null}[]};
@@ -29,6 +30,7 @@ function Review({p,vehicles,onDone}:{p:Post;vehicles:VL[];onDone:()=>void}){
    if(r.error){setBusy('');return setErr([r.error.code==='23505'?'Esta publicación ya está asociada a otro vehículo. Elegilo en la lista "Asociar a un vehículo existente".':`No se pudo crear el borrador: ${r.error.message}`]);}
    vid=r.data.id;}
   try{const res=await call({action:'import',post_id:p.id,media_ids:[...sel],vehicle_id:vid});
+   setBusy('Generando miniaturas…');const th=await ensureThumbs(vid);if(th.errs.length)setErr([`Miniaturas pendientes (${th.errs.length}): podés completarlas desde Optimizar fotos.`]);
    if(res.errors?.length)setErr(['Algunas fotos no se pudieron importar (el borrador quedó creado, podés reintentar):',...res.errors]);
    else{setOk(`Listo: ${res.imported} foto(s) importadas. El vehículo quedó como borrador sin publicar; revisalo en Inventario.`);onDone();}
   }catch(e){setErr([`No se pudieron importar las fotos: ${(e as Error).message}`]);}

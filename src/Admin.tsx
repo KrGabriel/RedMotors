@@ -3,9 +3,11 @@ import {Link} from 'react-router-dom';
 import {configured,sb} from './lib';
 import {Icon} from './icons';
 import InstagramAdmin from './InstagramAdmin';
+import PhotoOptimizer from './PhotoOptimizer';
+import {plan,putBlob,thumbPath} from './photoTools';
 
 const Bar=()=><div className="admbar"><img src="/logo.png" alt="" width="36" height="36"/><b>Panel de administración</b></div>;
-type P={id:string;url:string;position:number};
+type P={id:string;url:string;thumb_url:string|null;position:number};
 type V={id:string;slug:string;brand:string;model:string;version:string|null;year:number;price:number|null;currency:string;mileage:number|null;fuel:string|null;transmission:string|null;color:string|null;body_type:string|null;description:string|null;features:string[];sale_status:string;is_published:boolean;featured:boolean;instagram_url:string|null;updated_at:string;vehicle_photos:P[]};
 const BUCKET='vehicle-photos',MAX=5*1024*1024,TYPES=['image/jpeg','image/png','image/webp'];
 const slugify=(s:string)=>s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
@@ -22,7 +24,7 @@ function Editor({v,onClose}:{v:V|null;onClose:()=>void}){
  const [f,setF]=useState<Record<string,any>>(v?{...empty,...Object.fromEntries(Object.entries(v).map(([k,x])=>[k,x??''])),features:(v.features||[]).join('\n')}:empty);
  const [errs,setErrs]=useState<string[]>([]);const [msg,setMsg]=useState('');const [busy,setBusy]=useState('');
  const set=(k:string)=>(e:any)=>setF({...f,[k]:e.target.type==='checkbox'?e.target.checked:e.target.value});
- const reload=async(id:string)=>{const {data}=await sb.from('vehicles').select('*,vehicle_photos(id,url,position)').eq('id',id).single();if(data)setCur(data as V);};
+ const reload=async(id:string)=>{const {data}=await sb.from('vehicles').select('*,vehicle_photos(id,url,thumb_url,position)').eq('id',id).single();if(data)setCur(data as V);};
  const save=async()=>{
   const er:string[]=[];const y=Number(f.year);
   if(!f.brand.trim())er.push('Falta la marca.');if(!f.model.trim())er.push('Falta el modelo.');
@@ -44,12 +46,15 @@ function Editor({v,onClose}:{v:V|null;onClose:()=>void}){
    if(!TYPES.includes(file.type)){er.push(`${file.name}: solo se permiten JPG, PNG o WebP.`);continue;}
    if(file.size>MAX){er.push(`${file.name}: supera los 5 MB.`);continue;}
    setBusy(`Subiendo foto ${i+1} de ${list.length}…`);
-   const ext=file.type.split('/')[1],path=`${cur.id}/${crypto.randomUUID()}.${ext}`;
-   const up=await sb.storage.from(BUCKET).upload(path,file,{contentType:file.type});
-   if(up.error){er.push(`${file.name}: ${up.error.message}`);continue;}
-   const url=sb.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
-   const ins=await sb.from('vehicle_photos').insert({vehicle_id:cur.id,url,position:pos,is_main:pos===0});
-   if(ins.error){await sb.storage.from(BUCKET).remove([path]);er.push(`${file.name}: ${ins.error.message}`);continue;}pos++;}
+   const id=crypto.randomUUID();const created:string[]=[];
+   try{let pl:Awaited<ReturnType<typeof plan>>|null=null;
+    try{pl=await plan(file,true);}catch{er.push(`${file.name}: no se pudo optimizar; se subió el original sin miniatura (podés completarla en "Optimizar fotos").`);}
+    const ext=pl?.full?pl.full.ext:file.type.split('/')[1],path=`${cur.id}/${id}.${ext}`;
+    const url=await putBlob(path,pl?.full?pl.full.blob:file,pl?.full?pl.full.blob.type:file.type);created.push(path);
+    let turl:string|null=null;if(pl){const tp=thumbPath(path,pl.thumb.ext);turl=await putBlob(tp,pl.thumb.blob);created.push(tp);}
+    const ins=await sb.from('vehicle_photos').insert({vehicle_id:cur.id,url,thumb_url:turl,position:pos,is_main:pos===0});
+    if(ins.error)throw new Error(ins.error.message);pos++;
+   }catch(e){if(created.length)await sb.storage.from(BUCKET).remove(created);er.push(`${file.name}: ${(e as Error).message}`);continue;}}
   setBusy('');setErrs(er);setMsg(er.length?'':'Fotos subidas.');await reload(cur.id);};
  const order=async(list:P[])=>{if(!cur)return;setBusy('Guardando orden…');
   const rs=await Promise.all(list.map((p,i)=>sb.from('vehicle_photos').update({position:i,is_main:i===0}).eq('id',p.id)));
@@ -57,7 +62,7 @@ function Editor({v,onClose}:{v:V|null;onClose:()=>void}){
  const move=(i:number,d:number)=>{const l=sorted(cur!);const j=i+d;if(j<0||j>=l.length)return;[l[i],l[j]]=[l[j],l[i]];order(l);};
  const main=(i:number)=>{const l=sorted(cur!);const [p]=l.splice(i,1);order([p,...l]);};
  const del=async(i:number)=>{if(!confirm('¿Eliminar esta foto?'))return;const l=sorted(cur!);const p=l[i];
-  const r=await sb.storage.from(BUCKET).remove([pathOf(p.url)]);if(r.error)return setErrs([`No se pudo borrar el archivo: ${r.error.message}`]);
+  const r=await sb.storage.from(BUCKET).remove([pathOf(p.url),...(p.thumb_url?[pathOf(p.thumb_url)]:[])]);if(r.error)return setErrs([`No se pudo borrar el archivo: ${r.error.message}`]);
   const d=await sb.from('vehicle_photos').delete().eq('id',p.id);if(d.error)return setErrs([d.error.message]);
   l.splice(i,1);await order(l);};
  const inp=(k:string,l:string,type='text')=><label>{l}<input type={type} value={f[k]} onChange={set(k)}/></label>;
@@ -74,23 +79,24 @@ function Editor({v,onClose}:{v:V|null;onClose:()=>void}){
   <div className="pgrid">{sorted(cur).map((p,i)=><div key={p.id} className="pitem"><img src={p.url} alt=""/>{i===0&&<b className="tag">Principal</b>}<div className="row"><button aria-label="Mover a la izquierda" onClick={()=>move(i,-1)}><Icon n="left" size={16}/></button><button aria-label="Mover a la derecha" onClick={()=>move(i,1)}><Icon n="right" size={16}/></button>{i>0&&<button aria-label="Usar como principal" onClick={()=>main(i)}><Icon n="star" size={16}/></button>}<button aria-label="Eliminar foto" onClick={()=>del(i)}><Icon n="trash" size={16}/></button></div></div>)}</div></>}</div>;}
 
 export default function Admin(){
- const [st,setSt]=useState<'load'|'login'|'denied'|'ok'>('load');const [list,setList]=useState<V[]>([]);const [ed,setEd]=useState<V|null|undefined>(undefined);const [q,setQ]=useState('');const [err,setErr]=useState('');const [ig,setIg]=useState(new URLSearchParams(location.search).has('instagram'));
+ const [st,setSt]=useState<'load'|'login'|'denied'|'ok'>('load');const [list,setList]=useState<V[]>([]);const [ed,setEd]=useState<V|null|undefined>(undefined);const [q,setQ]=useState('');const [err,setErr]=useState('');const [opt,setOpt]=useState(false);const [ig,setIg]=useState(new URLSearchParams(location.search).has('instagram'));
  const check=useCallback(async()=>{const {data:{session}}=await sb.auth.getSession();if(!session)return setSt('login');
   const {data}=await sb.from('admin_users').select('user_id').eq('user_id',session.user.id).maybeSingle();setSt(data?'ok':'denied');},[]);
- const load=useCallback(async()=>{const {data,error}=await sb.from('vehicles').select('*,vehicle_photos(id,url,position)').order('updated_at',{ascending:false});if(error)setErr(error.message);else setList(data as V[]);},[]);
+ const load=useCallback(async()=>{const {data,error}=await sb.from('vehicles').select('*,vehicle_photos(id,url,thumb_url,position)').order('updated_at',{ascending:false});if(error)setErr(error.message);else setList(data as V[]);},[]);
  useEffect(()=>{if(configured)check();},[check]);useEffect(()=>{if(st==='ok'&&ed===undefined)load();},[st,ed,load]);
  if(!configured)return <main><p>Falta configurar Supabase (.env).</p></main>;
  if(st==='load')return <main><p>Cargando…</p></main>;
  if(st==='login')return <Login onDone={check}/>;
  if(st==='denied')return <main><p className="err">Tu usuario no tiene permisos de administrador. Agregalo a la tabla admin_users.</p><button className="btn" onClick={async()=>{await sb.auth.signOut();setSt('login');}}>Salir</button></main>;
+ if(opt)return <main><Bar/><PhotoOptimizer onClose={()=>setOpt(false)}/></main>;
  if(ig)return <main><Bar/><InstagramAdmin onClose={()=>setIg(false)}/></main>;
  if(ed!==undefined)return <main><Bar/><Editor v={ed} onClose={()=>setEd(undefined)}/></main>;
  const patch=async(v:V,c:Partial<V>)=>{const {error}=await sb.from('vehicles').update(c).eq('id',v.id);if(error)setErr(error.message);load();};
  const remove=async(v:V)=>{if(!confirm(`¿Eliminar ${v.brand} ${v.model} ${v.year}? Se borran también sus fotos.`))return;
-  const paths=v.vehicle_photos.map(p=>pathOf(p.url)).filter(Boolean);if(paths.length){const r=await sb.storage.from(BUCKET).remove(paths);if(r.error)return setErr(`No se pudieron borrar las fotos: ${r.error.message}`);}
+  const paths=v.vehicle_photos.flatMap(p=>[pathOf(p.url),p.thumb_url?pathOf(p.thumb_url):'']).filter(Boolean);if(paths.length){const r=await sb.storage.from(BUCKET).remove(paths);if(r.error)return setErr(`No se pudieron borrar las fotos: ${r.error.message}`);}
   const {error}=await sb.from('vehicles').delete().eq('id',v.id);if(error)setErr(error.message);load();};
  const shown=list.filter(v=>`${v.brand} ${v.model} ${v.version||''}`.toLowerCase().includes(q.toLowerCase()));
- return <main><Bar/><div className="row" style={{justifyContent:'space-between'}}><h2>Inventario</h2><div className="row"><Link className="btn" to="/">Ver web</Link><button className="btn" onClick={()=>setIg(true)}>Instagram</button><button className="btn" onClick={()=>setEd(null)}>+ Nuevo vehículo</button><button className="btn" onClick={async()=>{await sb.auth.signOut();setSt('login');}}>Salir</button></div></div>
+ return <main><Bar/><div className="row" style={{justifyContent:'space-between'}}><h2>Inventario</h2><div className="row"><Link className="btn" to="/">Ver web</Link><button className="btn" onClick={()=>setIg(true)}>Instagram</button><button className="btn" onClick={()=>setOpt(true)}>Optimizar fotos</button><button className="btn" onClick={()=>setEd(null)}>+ Nuevo vehículo</button><button className="btn" onClick={async()=>{await sb.auth.signOut();setSt('login');}}>Salir</button></div></div>
   {err&&<p className="err">{err}</p>}<input placeholder="Buscar…" value={q} onChange={e=>setQ(e.target.value)}/>
   {!shown.length&&<div className="empty"><p>No hay vehículos cargados.</p></div>}
   <div className="tbl">{shown.map(v=><div className="trow" key={v.id}><img src={sorted(v)[0]?.url} alt=""/><div className="grow"><b>{v.brand} {v.model} {v.version||''} · {v.year}</b><div className="meta">{v.price!=null?`${v.currency} ${v.price.toLocaleString('es-AR')}`:'Sin precio'} · {new Date(v.updated_at).toLocaleString('es-AR')}</div></div>
