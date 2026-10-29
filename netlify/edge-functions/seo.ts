@@ -26,10 +26,10 @@ export default async (req:Request,ctx:{next:()=>Promise<Response>})=>{
  if(p==='/'){const title=`${site} | Compra y venta de vehículos`,desc='Compra y venta de vehículos. Tu próximo vehículo empieza acá. Vehículos de toda la provincia.';
   out=inject(html,title,meta({title,desc,url:`${origin}/`,site,image:logo}));}
  else{const m=p.match(/^\/vehiculos\/([a-z0-9-]+)\/?$/);
-  if(m){const v=(await rest(`vehicles?slug=eq.${m[1]}&is_published=eq.true&select=brand,model,version,year,price,currency,mileage,fuel,transmission,color,body_type,description,sale_status,vehicle_photos(url,position)&limit=1`))?.[0];
+  if(m){const v=(await rest(`vehicles?slug=eq.${m[1]}&is_published=eq.true&select=brand,model,version,year,price,currency,mileage,fuel,transmission,color,body_type,description,sale_status,vehicle_photos(url,thumb_url,position)&limit=1`))?.[0];
    if(!v)out=html.replace('</head>','<meta name="robots" content="noindex"></head>');
    else{const name=`${v.brand} ${v.model}${v.version?' '+v.version:''}`,canon=`${origin}/vehiculos/${m[1]}`;
-    const photos=[...(v.vehicle_photos||[])].sort((a:any,b:any)=>a.position-b.position).map((x:any)=>x.url);
+    const sp=[...(v.vehicle_photos||[])].sort((a:any,b:any)=>a.position-b.position),photos=sp.map((x:any)=>x.url),og=sp[0]?.thumb_url||photos[0];
     const facts=[v.mileage!=null&&`${v.mileage.toLocaleString('es-AR')} km`,v.fuel,v.transmission,v.price!=null&&money(v.price,v.currency)].filter(Boolean).join(' · ');
     let desc=`${name} ${v.year}.${facts?' '+facts+'.':''}${v.description?' '+String(v.description).replace(/\s+/g,' '):''}`;if(desc.length>157)desc=desc.slice(0,156).trimEnd()+'…';
     const title=`${name} ${v.year} | ${site}`;
@@ -37,7 +37,7 @@ export default async (req:Request,ctx:{next:()=>Promise<Response>})=>{
      color:v.color||undefined,bodyType:v.body_type||undefined,fuelType:v.fuel||undefined,vehicleTransmission:v.transmission||undefined,description:v.description||undefined,
      mileageFromOdometer:v.mileage!=null?{'@type':'QuantitativeValue',value:v.mileage,unitCode:'KMT'}:undefined,
      offers:v.price!=null?{'@type':'Offer',price:v.price,priceCurrency:v.currency||'ARS',availability:AVAIL[v.sale_status],url:canon}:undefined};
-    out=inject(html,title,meta({title,desc,url:canon,site,image:photos[0]||logo})+`<script type="application/ld+json">${JSON.stringify(ld).replace(/</g,'\\u003c')}</script>`);}}}
+    out=inject(html,title,meta({title,desc,url:canon,site,image:og||logo})+`<script type="application/ld+json">${JSON.stringify(ld).replace(/</g,'\\u003c')}</script>`);}}}
  const h=new Headers(res.headers);h.delete('content-length');
  return new Response(out,{status:res.status,headers:h});};
 export const config={path:['/','/vehiculos/*','/robots.txt','/sitemap.xml']};

@@ -1,10 +1,10 @@
 import {useEffect,useMemo,useState} from 'react';
 import {Link,Route,Routes,useLocation,useParams} from 'react-router-dom';
-import {configured,loadAll,money,photos,title,waLink,waSell,Settings,Vehicle} from './lib';
+import {configured,loadAll,money,photos,thumbs,title,waLink,waSell,Settings,Vehicle} from './lib';
 import {Icon} from './icons';
 
-function Card({v,s}:{v:Vehicle;s:Settings|null}){const img=photos(v)[0];const wa=waLink(s,v);
- return <article className="card"><Link to={`/vehiculos/${v.slug}`}>{img?<img src={img} alt={title(v)} loading="lazy"/>:<div className="noimg">Sin foto</div>}</Link>
+function Card({v,s}:{v:Vehicle;s:Settings|null}){const img=thumbs(v)[0];const wa=waLink(s,v);
+ return <article className="card"><Link to={`/vehiculos/${v.slug}`}>{img?<img src={img} alt={title(v)} loading="lazy" decoding="async"/>:<div className="noimg">Sin foto</div>}</Link>
  <div className="cb"><span className={`tag ${v.sale_status}`}>{v.sale_status}</span><h3>{title(v)}</h3><p className="price">{money(v)}</p>
  <p className="meta">{[v.year,v.mileage!=null&&`${v.mileage.toLocaleString('es-AR')} km`,v.fuel,v.transmission].filter(Boolean).join(' · ')}</p>
  <div className="row"><Link className="btn" to={`/vehiculos/${v.slug}`}>Ver detalles</Link>{wa&&<a className="btn wa" href={wa} target="_blank" rel="noreferrer"><Icon n="chat" size={16}/>WhatsApp</a>}</div></div></article>;}
@@ -45,12 +45,12 @@ function Catalog({vs,s}:{vs:Vehicle[];s:Settings|null}){
 function Detail({vs,s}:{vs:Vehicle[];s:Settings|null}){const {slug}=useParams();const v=vs.find(x=>x.slug===slug);const [i,setI]=useState(0);const [big,setBig]=useState(false);
  useEffect(()=>{if(v)document.title=`${title(v)} ${v.year} | ${s?.business_name||''}`;},[v,s]);
  if(!v) return <p>Vehículo no encontrado. <Link to="/catalogo">Volver al catálogo</Link></p>;
- const ph=photos(v);const wa=waLink(s,v);const rel=vs.filter(x=>x.id!==v.id&&x.brand===v.brand).slice(0,3);
+ const ph=photos(v),tp=thumbs(v);const wa=waLink(s,v);const rel=vs.filter(x=>x.id!==v.id&&x.brand===v.brand).slice(0,3);
  const rows:[string,unknown][]=[['Año',v.year],['Kilometraje',v.mileage!=null?`${v.mileage.toLocaleString('es-AR')} km`:null],['Combustible',v.fuel],['Transmisión',v.transmission],['Color',v.color],['Carrocería',v.body_type],['Publicado',new Date(v.published_at).toLocaleDateString('es-AR')]];
  const share=()=>navigator.share?navigator.share({title:title(v),url:location.href}):navigator.clipboard.writeText(location.href);
  return <><Link to="/catalogo">← Catálogo</Link><div className="detail"><div>
-  {ph.length?<img className="big" src={ph[i]} alt={title(v)} onClick={()=>setBig(true)}/>:<div className="noimg big">Sin fotos</div>}
-  <div className="thumbs">{ph.map((u,k)=><img key={u} src={u} alt="" className={k===i?'on':''} onClick={()=>setI(k)}/>)}</div></div>
+  {ph.length?<img className="big" src={ph[i]} alt={title(v)} decoding="async" {...({fetchpriority:'high'} as object)} onClick={()=>setBig(true)}/>:<div className="noimg big">Sin fotos</div>}
+  <div className="thumbs">{tp.map((u,k)=><img key={ph[k]} src={u} alt="" width="84" height="62" loading="lazy" decoding="async" className={k===i?'on':''} onClick={()=>setI(k)}/>)}</div></div>
   <div><span className={`tag ${v.sale_status}`}>{v.sale_status}</span><h1>{title(v)}</h1><p className="price">{money(v)}</p>
   <dl>{rows.filter(r=>r[1]!=null&&r[1]!=='').map(([k,x])=><div key={k}><dt>{k}</dt><dd>{String(x)}</dd></div>)}</dl>
   {v.description&&<p>{v.description}</p>}{v.features?.length>0&&<ul>{v.features.map(f=><li key={f}>{f}</li>)}</ul>}
