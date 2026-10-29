@@ -4,6 +4,8 @@ import {configured,sb} from './lib';
 import {Icon} from './icons';
 import InstagramAdmin from './InstagramAdmin';
 import PhotoOptimizer from './PhotoOptimizer';
+import SettingsAdmin from './SettingsAdmin';
+import {igAlerts} from './adminTools';
 import {plan,putBlob,thumbPath} from './photoTools';
 
 const Bar=()=><div className="admbar"><img src="/logo.png" alt="" width="36" height="36"/><b>Panel de administración</b></div>;
@@ -79,15 +81,17 @@ function Editor({v,onClose}:{v:V|null;onClose:()=>void}){
   <div className="pgrid">{sorted(cur).map((p,i)=><div key={p.id} className="pitem"><img src={p.thumb_url||p.url} alt="" loading="lazy" decoding="async"/>{i===0&&<b className="tag">Principal</b>}<div className="row"><button aria-label="Mover a la izquierda" onClick={()=>move(i,-1)}><Icon n="left" size={16}/></button><button aria-label="Mover a la derecha" onClick={()=>move(i,1)}><Icon n="right" size={16}/></button>{i>0&&<button aria-label="Usar como principal" onClick={()=>main(i)}><Icon n="star" size={16}/></button>}<button aria-label="Eliminar foto" onClick={()=>del(i)}><Icon n="trash" size={16}/></button></div></div>)}</div></>}</div>;}
 
 export default function Admin(){
- const [st,setSt]=useState<'load'|'login'|'denied'|'ok'>('load');const [list,setList]=useState<V[]>([]);const [ed,setEd]=useState<V|null|undefined>(undefined);const [q,setQ]=useState('');const [err,setErr]=useState('');const [opt,setOpt]=useState(false);const [ig,setIg]=useState(new URLSearchParams(location.search).has('instagram'));
+ const [st,setSt]=useState<'load'|'login'|'denied'|'ok'>('load');const [list,setList]=useState<V[]>([]);const [ed,setEd]=useState<V|null|undefined>(undefined);const [q,setQ]=useState('');const [err,setErr]=useState('');const [opt,setOpt]=useState(false);const [cfg,setCfg]=useState(false);const [alerts,setAlerts]=useState<string[]>([]);const [ig,setIg]=useState(new URLSearchParams(location.search).has('instagram'));
  const check=useCallback(async()=>{const {data:{session}}=await sb.auth.getSession();if(!session)return setSt('login');
   const {data}=await sb.from('admin_users').select('user_id').eq('user_id',session.user.id).maybeSingle();setSt(data?'ok':'denied');},[]);
  const load=useCallback(async()=>{const {data,error}=await sb.from('vehicles').select('*,vehicle_photos(id,url,thumb_url,position)').order('updated_at',{ascending:false});if(error)setErr(error.message);else setList(data as V[]);},[]);
  useEffect(()=>{if(configured)check();},[check]);useEffect(()=>{if(st==='ok'&&ed===undefined)load();},[st,ed,load]);
+ useEffect(()=>{if(st!=='ok')return;sb.functions.invoke('instagram',{body:{action:'status'}}).then(({data,error})=>{if(!error&&data)setAlerts(igAlerts(data));}).catch(()=>{});},[st]);
  if(!configured)return <main><p>Falta configurar Supabase (.env).</p></main>;
  if(st==='load')return <main><p>Cargando…</p></main>;
  if(st==='login')return <Login onDone={check}/>;
  if(st==='denied')return <main><p className="err">Tu usuario no tiene permisos de administrador. Agregalo a la tabla admin_users.</p><button className="btn" onClick={async()=>{await sb.auth.signOut();setSt('login');}}>Salir</button></main>;
+ if(cfg)return <main><Bar/><SettingsAdmin onClose={()=>setCfg(false)}/></main>;
  if(opt)return <main><Bar/><PhotoOptimizer onClose={()=>setOpt(false)}/></main>;
  if(ig)return <main><Bar/><InstagramAdmin onClose={()=>setIg(false)}/></main>;
  if(ed!==undefined)return <main><Bar/><Editor v={ed} onClose={()=>setEd(undefined)}/></main>;
@@ -96,7 +100,7 @@ export default function Admin(){
   const paths=v.vehicle_photos.flatMap(p=>[pathOf(p.url),p.thumb_url?pathOf(p.thumb_url):'']).filter(Boolean);if(paths.length){const r=await sb.storage.from(BUCKET).remove(paths);if(r.error)return setErr(`No se pudieron borrar las fotos: ${r.error.message}`);}
   const {error}=await sb.from('vehicles').delete().eq('id',v.id);if(error)setErr(error.message);load();};
  const shown=list.filter(v=>`${v.brand} ${v.model} ${v.version||''}`.toLowerCase().includes(q.toLowerCase()));
- return <main><Bar/><div className="row" style={{justifyContent:'space-between'}}><h2>Inventario</h2><div className="row"><Link className="btn" to="/">Ver web</Link><button className="btn" onClick={()=>setIg(true)}>Instagram</button><button className="btn" onClick={()=>setOpt(true)}>Optimizar fotos</button><button className="btn" onClick={()=>setEd(null)}>+ Nuevo vehículo</button><button className="btn" onClick={async()=>{await sb.auth.signOut();setSt('login');}}>Salir</button></div></div>
+ return <main><Bar/>{alerts.length>0&&<div className="empty" style={{textAlign:'left',marginBottom:16}}>{alerts.map(a=><p className="err" key={a} style={{margin:'4px 0'}}>{a}</p>)}<button className="btn" onClick={()=>setIg(true)}>Ir a Instagram</button></div>}<div className="row" style={{justifyContent:'space-between'}}><h2>Inventario</h2><div className="row"><Link className="btn" to="/">Ver web</Link><button className="btn" onClick={()=>setIg(true)}>Instagram</button><button className="btn" onClick={()=>setOpt(true)}>Optimizar fotos</button><button className="btn" onClick={()=>setCfg(true)}>Configuración</button><button className="btn" onClick={()=>setEd(null)}>+ Nuevo vehículo</button><button className="btn" onClick={async()=>{await sb.auth.signOut();setSt('login');}}>Salir</button></div></div>
   {err&&<p className="err">{err}</p>}<input placeholder="Buscar…" value={q} onChange={e=>setQ(e.target.value)}/>
   {!shown.length&&<div className="empty"><p>No hay vehículos cargados.</p></div>}
   <div className="tbl">{shown.map(v=><div className="trow" key={v.id}><img src={sorted(v)[0]?.thumb_url||sorted(v)[0]?.url} alt="" loading="lazy" decoding="async"/><div className="grow"><b>{v.brand} {v.model} {v.version||''} · {v.year}</b><div className="meta">{v.price!=null?`${v.currency} ${v.price.toLocaleString('es-AR')}`:'Sin precio'} · {new Date(v.updated_at).toLocaleString('es-AR')}</div></div>

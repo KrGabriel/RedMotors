@@ -28,13 +28,13 @@ async function connect(code:string){
 
 async function sync(trigger:string){
  const {data:log}=await db.from('instagram_sync_log').insert({trigger}).select('id').single();
- let fetched=0,created=0,message='Sincronización completa.',ok=false;
+ let fetched=0,created=0,message='Sincronización completa.',ok=false,refreshWarn='';
  try{
   const {data:c}=await db.from('instagram_connection').select('*').eq('id',1).maybeSingle();
   if(!c?.access_token)throw new Error('No hay una cuenta de Instagram conectada.');
   if(c.expires_at&&new Date(c.expires_at).getTime()-Date.now()<15*864e5){
    try{const r=await graph(`https://graph.instagram.com/refresh_access_token?grant_type=ig_refresh_token&access_token=${c.access_token}`);
-    c.access_token=r.access_token;await db.from('instagram_connection').update({access_token:r.access_token,expires_at:new Date(Date.now()+r.expires_in*1000).toISOString()}).eq('id',1);}catch(_e){/* se reintenta en la próxima sincronización */}}
+    c.access_token=r.access_token;await db.from('instagram_connection').update({access_token:r.access_token,expires_at:new Date(Date.now()+r.expires_in*1000).toISOString()}).eq('id',1);}catch(e){refreshWarn=human(e);}}
   const {data:all}=await db.from('instagram_posts').select('id,ig_media_id,caption,status');
   const known=new Map((all||[]).map((p:any)=>[p.ig_media_id,p]));
   const started=new Date().toISOString();let url:string|null=`https://graph.instagram.com/me/media?fields=${FIELDS}&limit=50&access_token=${c.access_token}`;let pages=0;
@@ -48,7 +48,8 @@ async function sync(trigger:string){
    url=r.paging?.next||null;}
   if(!url)await db.from('instagram_posts').update({unavailable:true}).lt('last_seen_at',started); // solo marca; nunca toca vehículos
   else message='Se alcanzó el máximo de páginas por corrida (2000 publicaciones); volvé a sincronizar para continuar.';
-  await db.from('instagram_connection').update({last_sync_at:new Date().toISOString(),last_error:null}).eq('id',1);ok=true;
+  await db.from('instagram_connection').update({last_sync_at:new Date().toISOString(),last_error:refreshWarn?`No se pudo renovar el acceso: ${refreshWarn}`:null}).eq('id',1);ok=true;
+  if(refreshWarn)message+=` Aviso: no se pudo renovar el acceso (${refreshWarn}).`;
  }catch(e){message=human(e);await db.from('instagram_connection').update({last_error:message}).eq('id',1);}
  await db.from('instagram_sync_log').update({finished_at:new Date().toISOString(),ok,fetched,new_posts:created,message}).eq('id',log?.id);
  return {ok,fetched,new_posts:created,message};}

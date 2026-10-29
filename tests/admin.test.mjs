@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+const {validateSettings:v,igAlerts:a}=await import(process.argv[2]);
+const ok={business_name:'RedMotors',whatsapp:'+54 9 376 412-3456',instagram_url:'@redmotormisiones',location:' Posadas, Misiones '};
+let r=v(ok);assert.deepEqual(r.errors,[]);assert.equal(r.clean.whatsapp,'5493764123456');assert.equal(r.clean.instagram_url,'https://www.instagram.com/redmotormisiones/');assert.equal(r.clean.location,'Posadas, Misiones');console.log('ok configuracion valida y normalizada');
+assert.ok(v({...ok,business_name:' '}).errors.length);assert.ok(v({...ok,whatsapp:'0376412345'}).errors.length);assert.ok(v({...ok,whatsapp:'12345'}).errors.length);assert.ok(v({...ok,instagram_url:'https://facebook.com/x'}).errors.length);
+assert.equal(v({...ok,whatsapp:'543764123456'}).hints.length,1);r=v({...ok,whatsapp:'',instagram_url:'',location:''});assert.deepEqual(r.errors,[]);assert.equal(r.clean.whatsapp,null);assert.equal(r.clean.instagram_url,null);console.log('ok errores, avisos y campos vacios');
+const now=Date.parse('2026-10-29T12:00:00Z'),h=n=>new Date(now-n*36e5).toISOString(),d=n=>new Date(now+n*864e5).toISOString();
+assert.deepEqual(a({connected:false,expires_at:d(1)},now),[]);assert.deepEqual(a({connected:true,expires_at:d(30),last_sync_at:h(1)},now),[]);
+assert.equal(a({connected:true,expires_at:d(5),last_sync_at:h(1)},now).length,1);assert.match(a({connected:true,expires_at:d(-1)},now)[0],/venció/);
+assert.equal(a({connected:true,expires_at:d(30),last_sync_at:h(1),last_error:'boom'},now).length,1);assert.equal(a({connected:true,expires_at:d(30),last_sync_at:h(30)},now).length,1);console.log('ok avisos de Instagram');
