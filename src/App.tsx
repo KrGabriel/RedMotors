@@ -1,5 +1,5 @@
 import {useEffect,useMemo,useState} from 'react';
-import {Link,Route,Routes,useParams} from 'react-router-dom';
+import {Link,Route,Routes,useLocation,useParams} from 'react-router-dom';
 import {configured,loadAll,money,photos,title,waLink,waSell,Settings,Vehicle} from './lib';
 import {Icon} from './icons';
 
@@ -58,7 +58,8 @@ function Detail({vs,s}:{vs:Vehicle[];s:Settings|null}){const {slug}=useParams();
   {big&&<div className="lb" role="dialog" aria-label="Galería" onClick={()=>setBig(false)}><button aria-label="Foto anterior" onClick={e=>{e.stopPropagation();setI((i+ph.length-1)%ph.length);}}>‹</button><img src={ph[i]} alt=""/><button aria-label="Foto siguiente" onClick={e=>{e.stopPropagation();setI((i+1)%ph.length);}}>›</button></div>}
   {rel.length>0&&<><h2>Vehículos relacionados</h2><div className="grid">{rel.map(r=><Card key={r.id} v={r} s={s}/>)}</div></>}</>;}
 
-export default function App(){const [d,setD]=useState<{vehicles:Vehicle[];settings:Settings|null;error?:string}|null>(null);const [menu,setMenu]=useState(false);
+export default function App(){const [d,setD]=useState<{vehicles:Vehicle[];settings:Settings|null;error?:string}|null>(null);const [menu,setMenu]=useState(false);const loc=useLocation();
+ useEffect(()=>{const n=d?.settings?.business_name||'RedMotors';if(loc.pathname==='/')document.title=`${n} | Compra y venta de vehículos`;else if(loc.pathname==='/catalogo')document.title=`Catálogo de vehículos | ${n}`;},[loc.pathname,d]);
  useEffect(()=>{if(configured)loadAll().then(setD);},[]);
  if(!configured) return <main><div className="empty"><h3>Falta configurar Supabase</h3><p>Copiá .env.example a .env y completá las dos variables.</p></div></main>;
  if(!d) return <main className="pub"><div className="wrap" style={{paddingTop:40}} aria-busy="true"><div className="grid">{[0,1,2,3,4,5].map(i=><div key={i} className="card sk"/>)}</div></div></main>;

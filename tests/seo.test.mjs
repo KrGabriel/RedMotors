@@ -1,0 +1,24 @@
+import assert from 'node:assert/strict';
+const env={SUPABASE_URL:'https://x.supabase.co',SUPABASE_ANON_KEY:'anon'};
+globalThis.Deno={env:{get:k=>env[k]}};
+const {default:seo}=await import(process.argv[2]);
+const HTML='<!doctype html><html><head><title>viejo</title><meta name="description" content="viejo"></head><body><div id="root"></div></body></html>';
+const next=(ct='text/html; charset=UTF-8')=>async()=>new Response(HTML,{headers:{'content-type':ct,'content-length':'999'}});
+let db={};globalThis.fetch=async(u)=>{const s=String(u);if(db.down)throw new Error('caido');
+ const key=Object.keys(db.routes).find(k=>s.includes(k));return key?new Response(JSON.stringify(db.routes[key])):new Response('[]');};
+const V={brand:'Toyota',model:'Corolla',version:'XEI',year:2022,price:25000000,currency:'ARS',mileage:41000,fuel:'Nafta',transmission:'Automática',color:null,body_type:null,sale_status:'disponible',
+ description:'<script>alert(1)</script> "oferta"',vehicle_photos:[{url:'https://x/b.jpg',position:1},{url:'https://x/a.jpg',position:0}]};
+const call=(path,ctx)=>seo(new Request('https://redmotors.test'+path),{next:ctx||next()});
+db.routes={'settings':[{business_name:'RedMotors'}],'vehicles?slug':[V],'vehicles?is_published':[{slug:'a-1',updated_at:'2026-10-01T10:00:00Z'},{slug:'b-2',updated_at:'2026-10-02T10:00:00Z'}]};
+let r=await call('/robots.txt');let t=await r.text();assert.match(t,/Disallow: \/admin/);assert.match(t,/Sitemap: https:\/\/redmotors.test\/sitemap.xml/);console.log('ok robots');
+r=await call('/sitemap.xml');t=await r.text();assert.match(t,/<loc>https:\/\/redmotors.test\/vehiculos\/a-1<\/loc><lastmod>2026-10-01/);assert.match(t,/vehiculos\/b-2/);console.log('ok sitemap');
+r=await call('/vehiculos/toyota-corolla-2022');t=await r.text();
+assert.match(t,/<title>Toyota Corolla XEI 2022 \| RedMotors<\/title>/);assert.match(t,/og:image" content="https:\/\/x\/a.jpg"/);
+assert.equal((t.match(/name="description"/g)||[]).length,1);assert.ok(!t.includes('<script>alert'));assert.ok(!r.headers.has('content-length'));
+const ld=JSON.parse(t.match(/ld\+json">(.*?)<\/script>/s)[1]);assert.equal(ld['@type'],'Car');assert.equal(ld.offers.price,25000000);assert.equal(ld.mileageFromOdometer.value,41000);assert.equal(ld.color,undefined);assert.deepEqual(ld.image,['https://x/a.jpg','https://x/b.jpg']);
+console.log('ok ficha:',t.match(/name="description" content="([^"]*)"/)[1]);
+r=await call('/');t=await r.text();assert.match(t,/og:image" content="https:\/\/redmotors.test\/logo.png"/);assert.match(t,/<title>RedMotors \| Compra/);console.log('ok inicio');
+db.routes={'settings':[],'vehicles?slug':[]};r=await call('/vehiculos/no-existe');t=await r.text();assert.match(t,/noindex/);assert.ok(!t.includes('og:title'));console.log('ok slug inexistente -> noindex');
+r=await call('/vehiculos/a%27b');t=await r.text();assert.equal(t,HTML);console.log('ok slug invalido ignorado');
+db.down=true;r=await call('/vehiculos/x');assert.equal(r.status,200);r=await call('/sitemap.xml');assert.match(await r.text(),/<urlset/);console.log('ok Supabase caido: no rompe');
+r=await call('/logo.png',next('image/png'));assert.equal(await r.text(),HTML);console.log('ok no-HTML pasa igual');
