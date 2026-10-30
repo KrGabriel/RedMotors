@@ -11,7 +11,7 @@ function Card({v,s}:{v:Vehicle;s:Settings|null}){const img=thumbs(v)[0];const wa
 
 function Empty({s}:{s:Settings|null}){const wa=waLink(s);return <div className="empty"><h3>Aún no hay vehículos publicados</h3><p>Consultanos y te contamos qué hay disponible.</p>{wa&&<a className="btn wa" href={wa}>Consultar por WhatsApp</a>}</div>;}
 
-function Home({vs,s}:{vs:Vehicle[];s:Settings|null}){const f=vs.filter(v=>v.featured).slice(0,6);const sell=waSell(s);const live=[...vs.filter(v=>v.sale_status!=='vendido'),...vs.filter(v=>v.sale_status==='vendido')];
+export function Home({vs,s}:{vs:Vehicle[];s:Settings|null}){const f=vs.filter(v=>v.featured).slice(0,6);const sell=waSell(s);const live=[...vs.filter(v=>v.sale_status!=='vendido'),...vs.filter(v=>v.sale_status==='vendido')];
  return <><section className="hero"><div className="wrap hero-in"><div className="hero-tx"><p className="eyebrow">Compra / venta{s?.location?` · ${s.location}`:''}</p>
  <h1>Tu próximo vehículo <em>empieza acá</em></h1><p className="lead">Vehículos de toda la provincia. Y si querés vender el tuyo, te ayudamos.</p>
  <div className="row"><Link className="btn pri" to="/catalogo">Ver inventario</Link>{sell&&<a className="btn" href={sell} target="_blank" rel="noreferrer">Quiero vender mi vehículo</a>}</div></div>
@@ -51,7 +51,7 @@ export function Catalog({vs,s}:{vs:Vehicle[];s:Settings|null}){
   {!vs.length?<Empty s={s}/>:!list.length?<p className="meta">Ningún vehículo coincide con los filtros.</p>:<div className="grid">{list.slice(0,n).map(v=><Card key={v.id} v={v} s={s}/>)}</div>}
   {n<list.length&&<div className="row"><button className="btn" onClick={()=>upd('n',String(n+12),true)}>Cargar más</button></div>}</>;}
 
-function Detail({vs,s}:{vs:Vehicle[];s:Settings|null}){const {slug}=useParams();const v=vs.find(x=>x.slug===slug);const [i,setI]=useState(0);const [big,setBig]=useState(false);const [copied,setCopied]=useState(false);
+export function Detail({vs,s}:{vs:Vehicle[];s:Settings|null}){const {slug}=useParams();const v=vs.find(x=>x.slug===slug);const [i,setI]=useState(0);const [big,setBig]=useState(false);const [copied,setCopied]=useState(false);
  useEffect(()=>{if(v)document.title=`${title(v)} ${v.year} | ${s?.business_name||''}`;},[v,s]);
  if(!v) return <p>Vehículo no encontrado. <Link to="/catalogo">Volver al catálogo</Link></p>;
  const ph=photos(v),tp=thumbs(v);const wa=waLink(s,v);const rel=vs.filter(x=>x.id!==v.id&&x.brand===v.brand&&x.sale_status!=='vendido').slice(0,3);
