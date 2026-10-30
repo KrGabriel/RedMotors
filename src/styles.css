@@ -71,3 +71,4 @@ footer h4{margin:0 0 10px;text-transform:uppercase;letter-spacing:.1em;font-size
 .cap{white-space:pre-wrap;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px;font:inherit;max-height:220px;overflow:auto}
 .dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:#59626b;margin-right:8px}.dot.on{background:#34d27b;box-shadow:0 0 0 4px #34d27b22}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+.resultbar{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:-8px 0 16px}
